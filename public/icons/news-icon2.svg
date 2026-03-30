@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <!-- 背景渐变 -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1A4BCE" />
+      <stop offset="100%" stop-color="#061A54" />
+    </linearGradient>
+
+    <!-- 左侧数据流渐变 -->
+    <linearGradient id="leftFlow" x1="32" y1="24" x2="32" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5EE6FF" stop-opacity="0.1" />
+      <stop offset="100%" stop-color="#5EE6FF" />
+    </linearGradient>
+
+    <!-- 中间数据流渐变 -->
+    <linearGradient id="centerFlow" x1="64" y1="16" x2="64" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.1" />
+      <stop offset="100%" stop-color="#FFFFFF" />
+    </linearGradient>
+
+    <!-- 右侧数据流渐变 -->
+    <linearGradient id="rightFlow" x1="96" y1="24" x2="96" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5EE6FF" stop-opacity="0.1" />
+      <stop offset="100%" stop-color="#5EE6FF" />
+    </linearGradient>
+  </defs>
+
+  <!-- 饱满的圆角背景，最大化利用 128x128 空间 -->
+  <rect width="128" height="128" rx="28" fill="url(#bgGrad)" />
+
+  <!-- 底部雷达/引力波纹 (增强提取器科技感) -->
+  <circle cx="64" cy="96" r="32" stroke="#5EE6FF" stroke-width="2" opacity="0.2" fill="none" />
+  <circle cx="64" cy="96" r="56" stroke="#5EE6FF" stroke-width="2" opacity="0.1" fill="none" />
+  <circle cx="64" cy="96" r="80" stroke="#5EE6FF" stroke-width="2" opacity="0.05" fill="none" />
+
+  <!-- 提取器过滤网 (水平虚线) -->
+  <line x1="20" y1="68" x2="108" y2="68" stroke="#5EE6FF" stroke-width="2" stroke-dasharray="4 4" opacity="0.4" />
+
+  <!-- 汇集的信息流线条 (粗壮、现代) -->
+  <path d="M 32 36 L 32 56 C 32 80, 64 80, 64 96" stroke="url(#leftFlow)" stroke-width="12" stroke-linecap="round" fill="none" />
+  <path d="M 96 36 L 96 56 C 96 80, 64 80, 64 96" stroke="url(#rightFlow)" stroke-width="12" stroke-linecap="round" fill="none" />
+  <path d="M 64 28 L 64 96" stroke="url(#centerFlow)" stroke-width="12" stroke-linecap="round" fill="none" />
+
+  <!-- 顶部的数据节点 (代表零散的情报源) -->
+  <circle cx="32" cy="22" r="6" fill="#5EE6FF" />
+  <circle cx="64" cy="14" r="6" fill="#FFFFFF" />
+  <circle cx="96" cy="22" r="6" fill="#5EE6FF" />
+
+  <!-- 底部提取出的情报核心 (发光点) -->
+  <circle cx="64" cy="96" r="20" fill="#5EE6FF" opacity="0.25" />
+  <circle cx="64" cy="96" r="14" fill="#5EE6FF" />
+  <circle cx="64" cy="96" r="6" fill="#FFFFFF" />
+</svg>
