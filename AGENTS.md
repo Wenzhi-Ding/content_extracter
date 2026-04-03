@@ -535,7 +535,60 @@ browser_claw/
 
 ---
 
-## 14. 与 Gemini 对话方案的差异说明
+## 14. 测试流程规范
+
+### 14.1 Test Folder 结构
+
+```
+test/
+├── 21shares.html          # 输入：HTML 测试样本
+├── 21shares.md            # 输出：对应的 Markdown 提取结果
+├── caixin.html
+├── caixin.md
+├── caixin_page1.html
+├── caixin_page1.md
+├── caixin_web.html
+├── caixin_web.md
+├── financial_times.html
+├── financial_times.md
+├── foreign_affairs.html
+├── foreign_affairs.md
+├── reuters.html
+├── reuters.md
+├── x_detail.html
+├── x_detail.md
+├── output/                # 保留（历史输出目录，可供对比）
+├── extract.ts             # 离线提取脚本
+└── e2e_test.mjs           # E2E 测试（Playwright）
+```
+
+### 14.2 每次更新后必做的验证步骤
+
+> **强制要求**：每次对提取逻辑（Content Script、`selectors.ts`、`extract.ts`、Turndown 规则等）做出修改后，**必须**执行以下操作：
+
+1. **运行离线提取脚本**：
+   ```bash
+   npx tsx test/extract.ts
+   ```
+2. **生成 Markdown 到 `test/` 目录**：脚本会将 `test/*.html` 逐一解析，生成对应的 `test/*.md`（与 HTML 同名、同目录）。命名规则：`<basename>.html` → `<basename>.md`。
+3. **检查输出**：确认每个 HTML 文件都有对应的 `.md` 文件生成，且内容不为空。
+4. **人工抽检**：抽查 1-2 个输出文件，确认提取质量（无大量噪声、正文完整、链接有效）。
+
+### 14.3 `extract.ts` 输出路径要求
+
+`extract.ts` 脚本**必须**将 Markdown 文件输出到 `test/` 目录（与 HTML 源文件同级），而非 `test/output/`。输出文件名与输入文件名保持一致，仅扩展名不同：
+
+| 输入 | 输出 |
+|------|------|
+| `test/reuters.html` | `test/reuters.md` |
+| `test/financial_times.html` | `test/financial_times.md` |
+| `test/caixin.html` | `test/caixin.md` |
+
+> **注意**：`test/output/` 目录保留作为历史参考，但新的一次性输出应直接放在 `test/` 下。
+
+---
+
+## 15. 与 Gemini 对话方案的差异说明
 
 在前期对话中，Gemini 提出了以下方案。本 AGENTS.md 在此基础上做了关键修正：
 

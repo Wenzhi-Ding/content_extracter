@@ -5,11 +5,11 @@
  *   - No args  → process all test/*.html
  *   - With arg → process only that file, e.g. `npx tsx test/extract.ts reuters`
  *
- * Outputs: test/output/<name>.md for each input file.
+ * Outputs: test/<name>.md for each input file (same directory as HTML source).
  */
 
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
-import { resolve, basename, join, dirname } from 'path';
+import { readFileSync, writeFileSync, readdirSync } from 'fs';
+import { resolve, join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { JSDOM } from 'jsdom';
 
@@ -831,6 +831,138 @@ function findContentElement(doc: Document): Element | null {
 }
 
 // ---------------------------------------------------------------------------
+// 7b. X/Twitter extraction
+// ---------------------------------------------------------------------------
+
+function isXTwitterPage(doc: Document): boolean {
+  return doc.querySelectorAll('[data-testid="tweetText"]').length > 0;
+}
+
+function extractTweetTextAsMarkdown(el: Element): string {
+  const clone = el.cloneNode(true) as Element;
+  const links = clone.querySelectorAll('a');
+  for (const link of links) {
+    const text = (link.textContent || '').trim();
+    const href = link.getAttribute('href') || '';
+    if (href && !href.startsWith('#')) {
+      link.textContent = '[' + text + '](' + href + ')';
+    }
+  }
+  const text = (clone.textContent || '').trim();
+  return text.replace(/\n+/g, '\n\n');
+}
+
+function extractTweetAuthor(container: Element): { author: string; handle: string } {
+  const userNameEl = container.querySelector('[data-testid="User-Name"]');
+  if (!userNameEl) return { author: '', handle: '' };
+  const links = userNameEl.querySelectorAll('a');
+  return {
+    author: (links[0]?.textContent || '').trim(),
+    handle: (links[1]?.textContent || '').trim(),
+  };
+}
+
+function extractXTwitterMarkdown(doc: Document): string {
+  const allArticles = doc.querySelectorAll('article');
+  const allTweetTexts = doc.querySelectorAll('[data-testid="tweetText"]');
+
+  const articleTweetTextSet = new Set<Element>();
+  const tweetArticles: Element[] = [];
+
+  for (const article of allArticles) {
+    if (article.querySelector('[data-testid="tweetText"]') ||
+        article.querySelector('[data-testid="User-Name"]')) {
+      tweetArticles.push(article);
+      for (const tt of article.querySelectorAll('[data-testid="tweetText"]')) {
+        articleTweetTextSet.add(tt);
+      }
+    }
+  }
+
+  const orphanTweetTexts = Array.from(allTweetTexts).filter(
+    tt => !articleTweetTextSet.has(tt)
+  );
+
+  let mainAuthor = '';
+  let mainHandle = '';
+  let mainTime = '';
+  let mainText = '';
+
+  if (orphanTweetTexts.length > 0) {
+    const mainTT = orphanTweetTexts[0];
+    mainText = extractTweetTextAsMarkdown(mainTT);
+
+    let walker: Element | null = mainTT.parentElement;
+    while (walker && walker !== doc.body) {
+      const { author, handle } = extractTweetAuthor(walker);
+      if (author || handle) {
+        mainAuthor = author;
+        mainHandle = handle;
+        break;
+      }
+      walker = walker.parentElement;
+    }
+
+    if (walker) {
+      const timeEl = walker.querySelector('time[datetime]');
+      mainTime = timeEl?.getAttribute('datetime') || '';
+    }
+  } else if (tweetArticles.length > 0) {
+    const firstArticle = tweetArticles[0];
+    const { author, handle } = extractTweetAuthor(firstArticle);
+    mainAuthor = author;
+    mainHandle = handle;
+    const tt = firstArticle.querySelector('[data-testid="tweetText"]');
+    mainText = tt ? extractTweetTextAsMarkdown(tt) : '';
+    const timeEl = firstArticle.querySelector('time[datetime]');
+    mainTime = timeEl?.getAttribute('datetime') || '';
+    tweetArticles.shift();
+  }
+
+  let md = '';
+
+  if (mainAuthor || mainHandle) {
+    md += '## ' + mainAuthor + ' (' + mainHandle + ')\n\n';
+  }
+  if (mainTime) md += '**' + mainTime + '**\n\n';
+  md += mainText + '\n\n';
+
+  const replies: { author: string; handle: string; time: string; text: string }[] = [];
+  for (const article of tweetArticles) {
+    const { author, handle } = extractTweetAuthor(article);
+    const tt = article.querySelector('[data-testid="tweetText"]');
+    const timeEl = article.querySelector('time[datetime]');
+    const text = tt ? extractTweetTextAsMarkdown(tt) : '';
+    if (!text && !author) continue;
+    replies.push({
+      author,
+      handle,
+      time: timeEl?.getAttribute('datetime') || '',
+      text,
+    });
+  }
+
+  const threadContinuations = replies.filter(r => r.handle === mainHandle);
+  const otherReplies = replies.filter(r => r.handle !== mainHandle);
+
+  for (const tc of threadContinuations) {
+    md += tc.text + '\n\n';
+  }
+
+  if (otherReplies.length > 0) {
+    md += '---\n\n## Replies\n\n';
+    for (const reply of otherReplies) {
+      md += '**' + reply.author + '** (' + reply.handle + ')';
+      if (reply.time) md += ' \u00b7 ' + reply.time;
+      md += '\n\n';
+      md += reply.text + '\n\n';
+    }
+  }
+
+  return md.trim();
+}
+
+// ---------------------------------------------------------------------------
 // 8. Page metadata extraction (title, canonical URL, publication date)
 // ---------------------------------------------------------------------------
 
@@ -903,6 +1035,11 @@ function extractFromHtml(html: string, filename: string): string {
   const dom = new JSDOM(html);
   const doc = dom.window.document;
 
+  if (isXTwitterPage(doc)) {
+    console.log('  Detected X/Twitter page');
+    return extractXTwitterMarkdown(doc);
+  }
+
   const pageTitle = extractPageTitle(doc);
   const pageUrl = extractCanonicalUrl(doc);
   const pageDate = extractPageDate(doc);
@@ -938,10 +1075,8 @@ function extractFromHtml(html: string, filename: string): string {
 
 function main(): void {
   const testDir = resolve(__dirname);
-  const outputDir = join(testDir, 'output');
-  mkdirSync(outputDir, { recursive: true });
 
-  const filter = process.argv[2]; // optional: "reuters", "financial_times", etc.
+  const filter = process.argv[2];
 
   const htmlFiles = readdirSync(testDir)
     .filter(f => f.endsWith('.html'))
@@ -954,7 +1089,7 @@ function main(): void {
 
   for (const file of htmlFiles) {
     const inputPath = join(testDir, file);
-    const outputPath = join(outputDir, file.replace('.html', '.md'));
+    const outputPath = join(testDir, file.replace('.html', '.md'));
 
     console.log(`\nProcessing: ${file}`);
     const html = readFileSync(inputPath, 'utf-8');
