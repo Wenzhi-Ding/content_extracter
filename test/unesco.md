@@ -1,6 +1,6 @@
 # A pioneering report by the Thomson Reuters Foundation and UNESCO sheds
 https://www.unesco.org/en/articles/pioneering-report-thomson-reuters-foundation-and-unesco-sheds-light-way-3000-companies-approach-ai
-Apr 15, 2026
+Apr 16, 2026
 
 News
 

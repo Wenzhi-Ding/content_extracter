@@ -1,6 +1,6 @@
 import { Readability } from '@mozilla/readability';
 
-export interface ReadabilityResult {
+interface ReadabilityResult {
   title: string;
   content: string;
   textContent: string;

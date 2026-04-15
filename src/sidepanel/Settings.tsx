@@ -83,20 +83,6 @@ export const Settings = ({ onBack }: SettingsProps) => {
           <h4 style="font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text);">Crawler Options</h4>
           
           <div style="margin-bottom: 16px;">
-            <label>Max Link Depth (0-2)</label>
-            <input
-              type="number"
-              name="maxLinkDepth"
-              value={config.maxLinkDepth}
-              onInput={handleChange}
-              min="0"
-              max="2"
-              placeholder="e.g. 1"
-            />
-            <div className="text-xs text-secondary" style="margin-top: -8px;">Depth to follow links from the original page.</div>
-          </div>
-
-          <div style="margin-bottom: 16px;">
             <label>Concurrent Tabs</label>
             <input
               type="number"
@@ -108,22 +94,6 @@ export const Settings = ({ onBack }: SettingsProps) => {
               placeholder="e.g. 3"
             />
             <div className="text-xs text-secondary" style="margin-top: -8px;">Number of background tabs to use for crawling.</div>
-          </div>
-
-          <div style="display: flex; align-items: center; justify-content: space-between;">
-            <div>
-              <div style="font-size: 13px; font-weight: 500;">Auto-follow links</div>
-              <div className="text-xs text-secondary">Automatically crawl links in the page (experimental)</div>
-            </div>
-            <label className="toggle-switch" style="margin: 0;">
-              <input
-                type="checkbox"
-                name="autoFollowLinks"
-                checked={config.autoFollowLinks}
-                onChange={handleChange}
-              />
-              <span className="slider"></span>
-            </label>
           </div>
         </div>
 

@@ -898,12 +898,6 @@ async function extractPageContent(): Promise<ExtractionResult> {
 
 console.log('[ContentExtractor:Content] Content script loaded on', window.location.hostname);
 
-if ((window as any).__contentExtractorLoaded) {
-  console.log('[ContentExtractor:Content] Already loaded, re-registering listener only');
-} else {
-  (window as any).__contentExtractorLoaded = true;
-}
-
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   console.log('[ContentExtractor:Content] Received message:', message.type);
   if (message.type === 'EXTRACT') {

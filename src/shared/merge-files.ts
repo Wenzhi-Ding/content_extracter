@@ -72,7 +72,7 @@ export function createMergedFile(files: CapturedFile[]): CapturedFile {
   return {
     id: crypto.randomUUID(),
     title: 'Merged Collection',
-    sourceUrl: 'browserclaw://merged',
+    sourceUrl: 'content-extractor://merged',
     capturedAt: now,
     markdown: mergeFilesMarkdown(files),
     links: [],

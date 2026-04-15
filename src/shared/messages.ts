@@ -1,4 +1,4 @@
-import type { ExtractionResult, FileId, UserConfig } from './types';
+import type { FileId, UserConfig } from './types';
 
 export interface ExtractCurrentTabMessage {
   type: 'EXTRACT_CURRENT_TAB';
@@ -45,32 +45,6 @@ export type ServiceWorkerMessage =
   | MergeAllFilesMessage
   | SaveConfigMessage
   | CrawlLinksMessage;
-
-export interface ExtractionCompleteMessage {
-  type: 'EXTRACTION_COMPLETE';
-  result: ExtractionResult;
-}
-
-export interface ExtractionErrorMessage {
-  type: 'EXTRACTION_ERROR';
-  error: string;
-}
-
-export type ContentScriptMessage =
-  | ExtractionCompleteMessage
-  | ExtractionErrorMessage;
-
-export interface SuccessResponse<T = undefined> {
-  success: true;
-  data: T;
-}
-
-export interface ErrorResponse {
-  success: false;
-  error: string;
-}
-
-export type MessageResponse<T = undefined> = SuccessResponse<T> | ErrorResponse;
 
 export interface FilesUpdatedEvent {
   type: 'FILES_UPDATED';

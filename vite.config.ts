@@ -38,12 +38,6 @@ export default defineConfig({
       },
     },
   },
-  resolve: {
-    alias: {
-      '@shared': '/src/shared',
-      '@lib': '/src/lib',
-    },
-  },
   server: {
     port: 5173,
     hmr: {

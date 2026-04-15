@@ -6,7 +6,6 @@ export interface ExtractedLink {
   url: string;
   text: string;
   crawled: boolean;
-  childFileId?: FileId;
 }
 
 export interface CapturedFile {
@@ -16,7 +15,6 @@ export interface CapturedFile {
   capturedAt: string;
   markdown: string;
   links: ExtractedLink[];
-  parentId?: FileId;
   depth: number;
   siteType: SiteType;
   sender?: string;
@@ -28,9 +26,7 @@ export interface CapturedFile {
 }
 
 export interface UserConfig {
-  maxLinkDepth: number;
   maxConcurrentTabs: number;
-  autoFollowLinks: boolean;
 }
 
 export interface ExtractionResult {

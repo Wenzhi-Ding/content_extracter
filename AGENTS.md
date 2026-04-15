@@ -1,33 +1,43 @@
 # AGENTS.md — Content Extractor
 
-> Chrome 扩展：从任意网页（含登录态页面）提取干净内容为 Markdown，支持拖拽导出和一键发送至 OpenClaw Bot。
+> Chrome extension: extract clean content from any web page (including logged-in pages) as Markdown. Supports drag-export and merge.
 >
-> 架构：Content Script（DOM 提取）→ Service Worker（存储 + API）→ Side Panel（UI）→ OpenClaw `/hooks/agent`
+> Architecture: Content Script (DOM extraction) → Service Worker (storage + crawl orchestration) → Side Panel (UI)
 
 ---
 
-## 1. 编码规范
+## 1. Coding Standards
 
-- **语言**：TypeScript (strict mode)
-- **格式化**：Prettier（默认配置）| **Lint**：ESLint + `@typescript-eslint`
-- **命名**：文件 `kebab-case` | 类/接口 `PascalCase` | 函数/变量 `camelCase` | 常量 `UPPER_SNAKE_CASE`
+- **Language**: TypeScript (strict mode)
+- **Formatting**: Prettier (default config) | **Lint**: ESLint + `@typescript-eslint`
+- **Naming**: files `kebab-case` | classes/interfaces `PascalCase` | functions/variables `camelCase` | constants `UPPER_SNAKE_CASE`
+- **Console logging**: `[ContentExtractor:<Component>]` prefix on all log messages
 
-### 目录结构
+### Directory Structure
 
 ```
 src/
-├── content/           # Content Script — extractor.ts, selectors.ts, index.ts
-├── background/        # Service Worker — api.ts, storage.ts, crawler.ts, index.ts
-├── sidepanel/         # Side Panel UI — App.tsx, FileList.tsx, FileCard.tsx, Settings.tsx
-├── shared/            # 共享类型 — types.ts, constants.ts, messages.ts
-└── lib/               # 第三方封装 — readability.ts, turndown.ts
+├── content/           # Content Script — index.ts (extraction pipeline), selectors.ts, link-cleaner.ts
+├── background/        # Service Worker — index.ts (message routing), storage.ts, crawler.ts
+├── sidepanel/         # Side Panel UI — index.html, index.tsx, App.tsx, FileCard.tsx, Settings.tsx
+├── shared/            # Shared types — types.ts, constants.ts, messages.ts, merge-files.ts
+├── lib/               # Third-party wrappers — readability.ts, turndown.ts
+└── types/             # Type declarations — turndown-plugin-gfm.d.ts
 ```
 
 ---
 
-## 2. 数据模型
+## 2. Data Models
 
 ```typescript
+type SiteType = 'outlook' | 'gmail' | 'caixin' | 'generic';
+
+interface ExtractedLink {
+  url: string;
+  text: string;
+  crawled: boolean;
+}
+
 interface CapturedFile {
   id: string;
   title: string;
@@ -35,80 +45,139 @@ interface CapturedFile {
   capturedAt: string;            // ISO 8601
   markdown: string;
   links: ExtractedLink[];
-  parentId?: string;             // 父页面链接跟踪
-  depth: number;                 // 0 = 主页面
-  siteType?: 'outlook' | 'gmail' | 'generic';
+  depth: number;                 // 0 = primary page
+  siteType: SiteType;            // required, always detected
+  sender?: string;               // email sender (Outlook/Gmail)
+  emailSubject?: string;         // email subject (Outlook/Gmail)
+  emailDate?: string;            // email date (Outlook/Gmail)
+  pageDate?: string;             // article publish date (generic sites)
+  isMerged?: boolean;            // true for merged collection files
+  mergedPageCount?: number;      // number of files in merged collection
 }
 
-interface ExtractedLink {
-  url: string;
-  text: string;
-  crawled: boolean;
-  childFileId?: string;
+interface UserConfig {
+  maxConcurrentTabs: number;     // background tabs for crawling (1–5, default 3)
 }
 ```
 
-导出格式：Markdown + YAML front matter（title, source, captured_at, extractor, site_type, links_found/crawled, parent, depth）。
+---
+
+## 3. Content Script Injection
+
+Content scripts are injected **programmatically** via `chrome.scripting.executeScript` in the service worker — there are **no declarative content scripts** in the manifest. This means:
+
+- The content script only runs when explicitly triggered (user clicks extract)
+- The IIFE wrapper in `vite.config.ts` (`wrap-content-script-iife` plugin) scopes all `const` declarations to function scope, preventing `SyntaxError: Identifier already declared` on re-injection
 
 ---
 
-## 3. 测试流程（强制）
+## 4. Extraction Pipeline
 
-每次修改提取逻辑后**必须**执行：
+### Site Detection → Selector Strategy
+
+| Site Type | Hostname Pattern | Strategy |
+|-----------|-----------------|----------|
+| `outlook` | `outlook.office.*`, `outlook.live.*`, `outlook.office365.*`, `outlook.cloud.microsoft` | Outlook-specific selectors |
+| `gmail` | `mail.google.com` | Gmail-specific selectors |
+| `caixin` | `*.caixin.com` | Caixin-specific selectors + "余下全文" click |
+| `generic` | everything else | `article` → `[role="main"]` → `main` → `.node__content` → `.post-content` → `null` sentinel |
+
+The `null` sentinel in `DEFAULT_STRATEGIES` signals "fall through to full-page Readability".
+
+### 3-Tier Extraction Path
+
+1. **Target element found** → clone, sanitize (email/caixin), convert innerHTML via Turndown
+2. **No target element** → full-page Readability parse → Turndown on `readable.content`
+3. **Readability fails** → fallback to `document.body.innerText`
+
+### 7-Step Markdown Post-Processing
+
+After Turndown conversion, the pipeline applies these steps in order:
+
+1. `cleanMarkdownLinks` — unwrap safelinks, clean URLs, remove tracking links
+2. `cleanMarkdownContent` — remove boilerplate (unsubscribe, privacy, footer), PUA chars, empty images
+3. `convertToReferenceLinks` — inline links → `[text][N]` + reference section; images stripped
+4. `cleanAfterReferenceConversion` — second pass for reference-style junk
+5. `removeUnusedReferences` — prune `[N]: url` lines not referenced in body
+6. `renumberReferences` — renumber sequentially from 1
+
+### Dual Turndown Mode
+
+`htmlToMarkdown(content, isEmail)` uses different rule sets:
+- **Email mode** (`isEmail=true`): aggressive table/list cleanup for Outlook/Gmail HTML
+- **Web mode** (`isEmail=false`): standard conversion preserving article structure
+
+### Link Extraction & Crawling
+
+- Links are extracted from the content element via `extractLinks()`
+- URL cleaning: redirect unwrapping + tracking param removal via `link-cleaner.ts`
+- Auto-crawl: Caixin article links in emails are automatically crawled after extraction
+- Crawler uses background tabs with configurable concurrency (`maxConcurrentTabs`)
+
+---
+
+## 5. Test Workflow (Mandatory)
+
+After every change to extraction logic, **must** run:
 
 ```bash
 npx tsx test/extract.ts
 ```
 
-- 输入 `test/*.html` → 输出 `test/*.md`（同级目录，非 `test/output/`）
-- 确认每个 `.html` 都有对应的非空 `.md`
-- 抽查 1-2 个文件确认质量
+- Input: `test/*.html` → Output: `test/*.md` (same directory, not `test/output/`)
+- Verify every `.html` has a corresponding non-empty `.md`
+- Spot-check 1–2 files for quality
 
-**注意**：离线测试通过 ≠ 扩展可用。JSDOM 与真实 DOM 存在差异，两个都必须通过。
+**Warning**: Passing offline tests ≠ extension working. JSDOM and real DOM have differences. Both must pass.
+
+**Known tech debt**: `test/extract.ts` mirrors ~600 lines from `src/content/` and `src/lib/` without importing — refactoring this is out of scope.
 
 ---
 
-## 4. 踩坑记录
+## 6. Pitfalls & Debugging
 
-### Outlook 域名
+### Outlook Domain Coverage
 
-`isOutlookHost()` 必须覆盖所有变体：`outlook.office.com`、`outlook.office365.com`、`outlook.live.com`、`outlook.cloud.microsoft`。**永远不要假设 Outlook 只有一个域名。**
+`isOutlookHost()` must cover ALL variants: `outlook.office.com`, `outlook.office365.com`, `outlook.live.com`, `outlook.cloud.microsoft`. **Never assume Outlook has only one domain.**
 
-### Outlook 选择器策略链
+### Outlook Selector Chain
 
-| 优先级 | 选择器 | 适用场景 |
-|--------|--------|---------|
-| 1 | `[id^="UniqueMessageBody"]` | 大多数版本 |
-| 2 | `[aria-label="邮件正文"]` | 中文 UI |
-| 3 | `[aria-label="Message body"]` | 英文 UI |
-| 4 | `[role="document"][aria-label]` | 通用 reading pane |
-| 5 | `[class^="rps_"]` | 关键兜底 |
+| Priority | Selector | Scenario |
+|----------|----------|----------|
+| 1 | `[id^="UniqueMessageBody"]` | Most versions |
+| 2 | `[aria-label="邮件正文"]` | Chinese UI |
+| 3 | `[aria-label="Message body"]` | English UI |
+| 4 | `[role="document"][aria-label]` | Generic reading pane |
+| 5 | `[class^="rps_"]` | Critical fallback |
 
-### 构建后验证
+### Generic Site Strategy
 
-每次 `npm run build` 后，在 `dist/content-script.js` 中搜索关键字符串确认改动已包含：
+For sites not matching any specific type, selectors are tried in order (`article` → `[role="main"]` → `main` → `.node__content` → `.post-content`). If none match, full-page Readability is used. `charThreshold: 0` ensures Readability doesn't reject short articles.
+
+### Post-Build Verification
+
+After `npm run build`, search `dist/content-script.js` for key strings to confirm changes are included:
 
 ```powershell
 Select-String -Path "dist/content-script.js" -Pattern "outlook.cloud.microsoft" -SimpleMatch
 Select-String -Path "dist/content-script.js" -Pattern "rps_" -SimpleMatch
 ```
 
-### 调试流程
+### Debug Flow
 
-1. Console 查 `[ContentExtractor:Content] Content script loaded on <hostname>` — 确认注入
-2. 查 `siteType` — 如果 Outlook 显示 `generic` 说明域名匹配遗漏
-3. 查 `targetElement` — `null` 说明选择器全部未命中
-4. 查 `markdown length: N` — 0 说明过度清理或提取失败
+1. Console: `[ContentExtractor:Content] Content script loaded on <hostname>` — confirms injection
+2. Check `siteType` — if Outlook shows `generic`, domain matching is missing
+3. Check `targetElement` — `null` means all selectors missed
+4. Check `markdown length: N` — 0 means over-cleaning or extraction failure
 
 ### CSP
 
-`chrome.scripting.executeScript` 注入的 content script **不受页面 CSP 限制**。Outlook Console 中的 CSP 警告与本扩展无关。
+Content scripts injected via `chrome.scripting.executeScript` are **not** subject to page CSP. CSP warnings in Outlook console are unrelated to this extension.
 
 ---
 
-## 5. 安全原则
+## 7. Security Principles
 
-- 所有操作需用户显式点击，无自动提取
-- Token 仅存 `chrome.storage.sync`，不在 content script 中暴露
-- API 请求仅从 Service Worker 发出
-- 权限最小化：`activeTab` + `scripting`，链接跟踪用 `optional_host_permissions`
+- All operations require explicit user click — no automatic extraction
+- API requests sent only from Service Worker
+- Permissions: `activeTab` + `scripting` + `storage` + `<all_urls>` host permission

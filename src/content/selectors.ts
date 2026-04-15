@@ -1,6 +1,6 @@
 import type { SiteType } from '../shared/types';
 
-export interface SelectorStrategy {
+interface SelectorStrategy {
   selector: string | null;
   description: string;
 }
