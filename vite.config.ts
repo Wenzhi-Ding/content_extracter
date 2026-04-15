@@ -8,6 +8,18 @@ export default defineConfig({
   plugins: [
     preact(),
     crx({ manifest }),
+    {
+      name: 'wrap-content-script-iife',
+      enforce: 'post',
+      generateBundle(_options, bundle) {
+        const chunk = bundle['content-script.js'];
+        if (chunk && chunk.type === 'chunk') {
+          // Wrap content-script in IIFE so `const` declarations are scoped
+          // to a function and don't throw on re-injection.
+          chunk.code = `(function(){\n${chunk.code}\n})();`;
+        }
+      },
+    },
   ],
   build: {
     target: 'esnext',

@@ -39,6 +39,7 @@ const BOILERPLATE_PATTERNS = [
   /safe\s*list/i,
   /registered\s+in\s+england/i,
   /company\s+number\s+\d+/i,
+  /caution:?\s*external\s+email/i,
 ];
 
 const TRACKING_IMAGE_PATTERNS = [
@@ -368,7 +369,7 @@ function extractOutlookMeta(): EmailMeta {
     }
   }
 
-  console.log('[BrowserClaw:Content] Outlook meta:', { subject, date, sender });
+  console.log('[ContentExtractor:Content] Outlook meta:', { subject, date, sender });
   return { subject, date, sender };
 }
 
@@ -526,6 +527,29 @@ function cleanMarkdownContent(markdown: string): string {
 
   cleaned = cleaned.replace(/^Advertisement:?\s+.*$/gim, '');
 
+  // Remove "CAUTION: External email" Outlook warning banner
+  cleaned = cleaned.replace(/^CAUTION:?\s*External\s+email.*$/gim, '');
+
+  // Remove newsletter date + "Read online" header: "April 08, 2026   |   [Read online][N]"
+  cleaned = cleaned.replace(/^\w+\s+\d{1,2},?\s+\d{4}\s*\|.*$/gm, '');
+
+  // Remove attachment blocks: "filename.ext / X.XX MB • File Type / [Download]"
+  cleaned = cleaned.replace(/^.*\d+(\.\d+)?\s*(MB|KB|GB)\s*[•·]\s*\w+\s*(File|Document)\s*$/gim, '');
+  cleaned = cleaned.replace(/^\[Download\]\[\d+\]\s*$/gim, '');
+  cleaned = cleaned.replace(/^\[Download\]\s*$/gim, '');
+
+  // Remove "Special thanks to our partners" heading
+  cleaned = cleaned.replace(/^##?\s*Special\s+thanks\s+to\s+our\s+partners?:?\s*$/gim, '');
+
+  // Remove "Over To You" newsletter engagement CTA section header
+  cleaned = cleaned.replace(/^##?\s*\*{0,2}Over\s+To\s+You:?\s*\*{0,2}.*$/gim, '');
+
+  // Remove standalone PDF filename lines (attachments)
+  cleaned = cleaned.replace(/^.*\.pdf\s*$/gim, '');
+
+  // Remove [Download](url) inline links (attachment buttons, before reference conversion)
+  cleaned = cleaned.replace(/^\[Download\]\([^)]+\)\s*$/gim, '');
+
   cleaned = cleaned.replace(/^尚未订阅.*$/gm, '');
   cleaned = cleaned.replace(/^\[立即订阅\].*$/gm, '');
   cleaned = cleaned.replace(/^分享给好友.*$/gm, '');
@@ -604,6 +628,14 @@ function cleanAfterReferenceConversion(markdown: string): string {
 
   // ![无配图]... leftover (unlikely but defensive)
   cleaned = cleaned.replace(/^!\[无配图\].*$/gm, '');
+
+  // [Download][N] reference-style links (attachment buttons)
+  cleaned = cleaned.replace(/^\[Download\]\[\d+\]\s*$/gim, '');
+
+  // Partner / sponsor list items: "- [Name][N]. Description... Learn more: [Name][N]"
+  cleaned = cleaned.replace(/^-   \[.*?\]\[\d+\][\.\s].*?Learn\s+more:.*$/gm, '');
+  // Variant: "-   [Name][N][.][M] description..." (broken link artifacts)
+  cleaned = cleaned.replace(/^-   \[.*?\]\[\d+\]\[\.\]\[\d+\].*$/gm, '');
 
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
   cleaned = cleaned.trim();
@@ -790,11 +822,14 @@ async function extractPageContent(): Promise<ExtractionResult> {
   const siteType = detectSiteType(hostname);
   const sourceUrl = window.location.href;
 
+  console.log('[ContentExtractor:Content] Extracting from', hostname, '| siteType:', siteType);
+
   if (siteType === 'caixin') {
     await clickCaixinLoadFullText();
   }
   
   const targetElement = findContentElement(hostname);
+  console.log('[ContentExtractor:Content] targetElement:', targetElement ? `<${targetElement.tagName} id="${targetElement.id}" class="${targetElement.className?.substring(0, 40)}">` : 'null');
   
   let rawTitle: string;
   let content: string;
@@ -814,21 +849,11 @@ async function extractPageContent(): Promise<ExtractionResult> {
       content = clonedTarget.innerHTML;
       contentElement = targetElement;
     } else {
-      const minimalDoc = document.implementation.createHTMLDocument(document.title);
-      minimalDoc.body.innerHTML = '';
-      minimalDoc.body.appendChild(clonedTarget);
-
-      const readable = extractReadable(minimalDoc);
-
-      if (readable) {
-        rawTitle = readable.title || document.title;
-        content = readable.content;
-        contentElement = targetElement;
-      } else {
-        rawTitle = document.title;
-        content = clonedTarget.innerHTML;
-        contentElement = targetElement;
-      }
+      // Generic site with identifiable content element (article/main/etc.)
+      // Use the element's HTML directly — Readability already found the content for us.
+      rawTitle = document.title;
+      content = clonedTarget.innerHTML;
+      contentElement = targetElement;
     }
   } else {
     const clonedDoc = cloneDocumentForReadability();
@@ -871,18 +896,24 @@ async function extractPageContent(): Promise<ExtractionResult> {
   };
 }
 
-console.log('[BrowserClaw:Content] Content script loaded on', window.location.hostname);
+console.log('[ContentExtractor:Content] Content script loaded on', window.location.hostname);
+
+if ((window as any).__contentExtractorLoaded) {
+  console.log('[ContentExtractor:Content] Already loaded, re-registering listener only');
+} else {
+  (window as any).__contentExtractorLoaded = true;
+}
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  console.log('[BrowserClaw:Content] Received message:', message.type);
+  console.log('[ContentExtractor:Content] Received message:', message.type);
   if (message.type === 'EXTRACT') {
     extractPageContent()
       .then(result => {
-        console.log('[BrowserClaw:Content] Extraction complete:', result.title, '| markdown length:', result.markdown.length, '| links:', result.links.length);
+        console.log('[ContentExtractor:Content] Extraction complete:', result.title, '| markdown length:', result.markdown.length, '| links:', result.links.length);
         sendResponse({ type: 'EXTRACTION_COMPLETE', result });
       })
       .catch(error => {
-        console.error('[BrowserClaw:Content] Extraction error:', error);
+        console.error('[ContentExtractor:Content] Extraction error:', error);
         sendResponse({ 
           type: 'EXTRACTION_ERROR', 
           error: error instanceof Error ? error.message : String(error),

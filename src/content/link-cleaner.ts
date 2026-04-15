@@ -37,6 +37,12 @@ const BASE64_REDIRECT_HOSTS = new Set([
   'link.foreignaffairs.com',
 ]);
 
+const NEWSLETTER_UPN_REDIRECT_HOSTS = [
+  'newsletter.bitcointreasuries.net',
+  'elink99b.newsletter.bitcointreasuries.net',
+  'elink96b.newsletter.bitcointreasuries.net',
+];
+
 function unwrapBase64Redirect(url: string, parsed: URL): string | null {
   if (!BASE64_REDIRECT_HOSTS.has(parsed.hostname)) return null;
   const pathType = parsed.pathname.split('/')[1];
@@ -51,6 +57,28 @@ function unwrapBase64Redirect(url: string, parsed: URL): string | null {
     if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
       return decoded;
     }
+  } catch {
+    // not valid base64
+  }
+  return null;
+}
+
+function unwrapNewsletterUpnRedirect(url: string, parsed: URL): string | null {
+  if (!NEWSLETTER_UPN_REDIRECT_HOSTS.some(h => parsed.hostname.endsWith(h))) return null;
+  if (!parsed.pathname.includes('/ls/click')) return null;
+
+  const upn = parsed.searchParams.get('upn');
+  if (!upn) return null;
+
+  try {
+    let decoded: string;
+    try {
+      decoded = atob(upn.replace(/-/g, '+').replace(/_/g, '/'));
+    } catch {
+      decoded = atob(upn);
+    }
+    const urlMatch = decoded.match(/https?:\/\/[^\s"'<>]+/);
+    if (urlMatch) return urlMatch[0];
   } catch {
     // not valid base64
   }
@@ -120,6 +148,11 @@ function unwrapRedirect(url: string): string {
     const b64Result = unwrapBase64Redirect(url, parsed);
     if (b64Result) {
       return unwrapRedirect(b64Result);
+    }
+
+    const upnResult = unwrapNewsletterUpnRedirect(url, parsed);
+    if (upnResult) {
+      return unwrapRedirect(upnResult);
     }
   } catch {
     return url;

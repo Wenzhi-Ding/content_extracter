@@ -1,6 +1,6 @@
 import type { UserConfig } from './types';
 
-export const EXTENSION_NAME = 'BrowserClaw';
+export const EXTENSION_NAME = 'Content Extractor';
 
 export const EXTENSION_VERSION = '1.0.0';
 
@@ -11,6 +11,6 @@ export const DEFAULT_CONFIG: UserConfig = {
 };
 
 export const STORAGE_KEYS = {
-  FILES: 'browserclaw_files',
-  CONFIG: 'browserclaw_config',
+  FILES: 'content_extractor_files',
+  CONFIG: 'content_extractor_config',
 } as const;

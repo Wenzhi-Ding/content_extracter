@@ -11,7 +11,7 @@ export interface ReadabilityResult {
 
 export function extractReadable(doc: Document): ReadabilityResult | null {
   const reader = new Readability(doc, {
-    charThreshold: 100,
+    charThreshold: 0,
   });
   return reader.parse();
 }

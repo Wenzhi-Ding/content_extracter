@@ -10,6 +10,7 @@ const OUTLOOK_STRATEGIES: SelectorStrategy[] = [
   { selector: '[aria-label="邮件正文"]', description: 'Outlook message body (Chinese UI)' },
   { selector: '[aria-label="Message body"]', description: 'Outlook message body (English UI)' },
   { selector: '[role="document"][aria-label]', description: 'Outlook reading pane document role' },
+  { selector: '[class^="rps_"]', description: 'Outlook email body container (rps_ prefixed class)' },
 ];
 
 const GMAIL_STRATEGIES: SelectorStrategy[] = [
@@ -23,13 +24,19 @@ const CAIXIN_STRATEGIES: SelectorStrategy[] = [
 ];
 
 const DEFAULT_STRATEGIES: SelectorStrategy[] = [
+  { selector: 'article', description: 'HTML5 article element' },
+  { selector: '[role="main"]', description: 'Main landmark role' },
+  { selector: 'main', description: 'HTML5 main element' },
+  { selector: '.node__content', description: 'Drupal node content' },
+  { selector: '.post-content', description: 'Common post content class' },
   { selector: null, description: 'Full page Readability' },
 ];
 
 function isOutlookHost(hostname: string): boolean {
   return hostname.includes('outlook.office') ||
     hostname.includes('outlook.live') ||
-    hostname.includes('outlook.office365');
+    hostname.includes('outlook.office365') ||
+    hostname.includes('outlook.cloud.microsoft');
 }
 
 function isCaixinHost(hostname: string): boolean {

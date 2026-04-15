@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "BrowserClaw",
+  "name": "Content Extractor",
   "description": "Extract clean content from any web page, package as Markdown, drag-export or send to OpenClaw Bot.",
   "version": "1.0.0",
   "icons": {
@@ -9,7 +9,7 @@
     "128": "public/icons/icon-128.png"
   },
   "action": {
-    "default_title": "Open BrowserClaw",
+    "default_title": "Open Content Extractor",
     "default_popup": "src/sidepanel/index.html"
   },
   "background": {
@@ -23,11 +23,5 @@
   ],
   "host_permissions": [
     "<all_urls>"
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["content-script.js"],
-      "matches": ["<all_urls>"]
-    }
   ]
 }

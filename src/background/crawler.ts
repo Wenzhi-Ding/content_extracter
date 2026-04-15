@@ -80,12 +80,12 @@ export async function crawlLinksForFile(
       });
 
       try {
-        console.log(`[BrowserClaw:Crawler] Crawling: ${url}`);
+        console.log(`[ContentExtractor:Crawler] Crawling: ${url}`);
         const result = await crawlSingleUrl(url);
         appendedSections.push(formatCrawledArticle(result, url));
-        console.log(`[BrowserClaw:Crawler] Done: ${url} (${result.markdown.length} chars)`);
+        console.log(`[ContentExtractor:Crawler] Done: ${url} (${result.markdown.length} chars)`);
       } catch (err) {
-        console.error(`[BrowserClaw:Crawler] Failed: ${url}`, err);
+        console.error(`[ContentExtractor:Crawler] Failed: ${url}`, err);
         appendedSections.push(
           `\n\n---\n\n## ⚠ 提取失败: ${url}\n\n${err instanceof Error ? err.message : String(err)}`
         );
@@ -114,7 +114,7 @@ export async function crawlLinksForFile(
 
   broadcast({ type: 'CRAWL_COMPLETE', fileId });
   broadcast({ type: 'FILES_UPDATED' });
-  console.log(`[BrowserClaw:Crawler] All ${total} links crawled for file ${fileId}`);
+  console.log(`[ContentExtractor:Crawler] All ${total} links crawled for file ${fileId}`);
 }
 
 export function isCaixinArticleUrl(url: string): boolean {

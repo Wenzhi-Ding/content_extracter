@@ -1,5 +1,5 @@
 /**
- * Test harness for BrowserClaw email extraction pipeline.
+ * Test harness for Content Extractor extraction pipeline.
  *
  * Usage:  npx tsx test/extract.ts [filename]
  *   - No args  → process all test/*.html
@@ -12,6 +12,7 @@ import { readFileSync, writeFileSync, readdirSync } from 'fs';
 import { resolve, join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { JSDOM } from 'jsdom';
+import { Readability } from '@mozilla/readability';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -60,6 +61,43 @@ const BASE64_REDIRECT_HOSTS = new Set([
   'newslink.reuters.com',
   'link.foreignaffairs.com',
 ]);
+
+/**
+ * Newsletter redirect hosts where the destination URL is embedded in the
+ * `upn` query parameter (Sailthru / LiveIntent style).  We try to base64-decode
+ * the `upn` value; if a URL is found we return it, otherwise fall through.
+ */
+const NEWSLETTER_UPN_REDIRECT_HOSTS = [
+  'newsletter.bitcointreasuries.net',
+  'elink99b.newsletter.bitcointreasuries.net',
+  'elink96b.newsletter.bitcointreasuries.net',
+];
+
+function unwrapNewsletterUpnRedirect(url: string, parsed: URL): string | null {
+  if (!NEWSLETTER_UPN_REDIRECT_HOSTS.some(h => parsed.hostname.endsWith(h))) return null;
+  if (!parsed.pathname.includes('/ls/click')) return null;
+
+  const upn = parsed.searchParams.get('upn');
+  if (!upn) return null;
+
+  // The upn value is base64-encoded; try to extract an http(s) URL from it.
+  // Sailthru upn format: base64 of (tracking_prefix + URL + more_tracking)
+  try {
+    // Try standard base64 first
+    let decoded: string;
+    try {
+      decoded = Buffer.from(upn, 'base64').toString('utf-8');
+    } catch {
+      decoded = Buffer.from(upn, 'base64url').toString('utf-8');
+    }
+    // Find http(s) URL inside decoded string
+    const urlMatch = decoded.match(/https?:\/\/[^\s"'<>]+/);
+    if (urlMatch) return urlMatch[0];
+  } catch {
+    // not valid base64
+  }
+  return null;
+}
 
 /**
  * Try to extract the real URL from newsletter redirect wrappers that use
@@ -111,6 +149,12 @@ function unwrapRedirect(url: string): string {
     const b64Result = unwrapBase64Redirect(url, parsed);
     if (b64Result) {
       return unwrapRedirect(b64Result); // recurse — decoded URL may still have tracking params
+    }
+
+    // Newsletter UPN-encoded redirect wrappers (Sailthru / Bitcointreasuries)
+    const upnResult = unwrapNewsletterUpnRedirect(url, parsed);
+    if (upnResult) {
+      return unwrapRedirect(upnResult);
     }
   } catch {
     return url;
@@ -325,6 +369,7 @@ const BOILERPLATE_PATTERNS = [
   /safe\s*list/i,
   /registered\s+in\s+england/i,
   /company\s+number\s+\d+/i,
+  /caution:?\s*external\s+email/i,
 ];
 
 function isBoilerplateNode(el: Element): boolean {
@@ -621,6 +666,29 @@ function cleanMarkdownContent(markdown: string): string {
   // Remove advertisement blocks
   cleaned = cleaned.replace(/^Advertisement:?\s+.*$/gim, '');
 
+  // Remove "CAUTION: External email" Outlook warning banner
+  cleaned = cleaned.replace(/^CAUTION:?\s*External\s+email.*$/gim, '');
+
+  // Remove newsletter date + "Read online" header: "April 08, 2026   |   [Read online][N]"
+  cleaned = cleaned.replace(/^\w+\s+\d{1,2},?\s+\d{4}\s*\|.*$/gm, '');
+
+  // Remove attachment blocks: "filename.ext / X.XX MB • File Type / [Download]"
+  cleaned = cleaned.replace(/^.*\d+(\.\d+)?\s*(MB|KB|GB)\s*[•·]\s*\w+\s*(File|Document)\s*$/gim, '');
+  cleaned = cleaned.replace(/^\[Download\]\[\d+\]\s*$/gim, '');
+  cleaned = cleaned.replace(/^\[Download\]\s*$/gim, '');
+
+  // Remove "Special thanks to our partners" and subsequent partner list section
+  cleaned = cleaned.replace(/^##?\s*Special\s+thanks\s+to\s+our\s+partners?:?\s*$/gim, '');
+
+  // Remove "Over To You" newsletter engagement CTA section header
+  cleaned = cleaned.replace(/^##?\s*\*{0,2}Over\s+To\s+You:?\s*\*{0,2}.*$/gim, '');
+
+  // Remove standalone PDF filename lines (attachments)
+  cleaned = cleaned.replace(/^.*\.pdf\s*$/gim, '');
+
+  // Remove [Download](url) inline links (attachment buttons, before reference conversion)
+  cleaned = cleaned.replace(/^\[Download\]\([^)]+\)\s*$/gim, '');
+
   // Remove "尚未订阅..." / subscription CTA lines
   cleaned = cleaned.replace(/^尚未订阅.*$/gm, '');
   cleaned = cleaned.replace(/^\[立即订阅\].*$/gm, '');
@@ -654,6 +722,14 @@ function cleanAfterReferenceConversion(markdown: string): string {
 
   // ![无配图]... leftover (unlikely but defensive)
   cleaned = cleaned.replace(/^!\[无配图\].*$/gm, '');
+
+  // [Download][N] reference-style links (attachment buttons)
+  cleaned = cleaned.replace(/^\[Download\]\[\d+\]\s*$/gim, '');
+
+  // Partner / sponsor list items: "- [Name][N]. Description... Learn more: [Name][N]"
+  cleaned = cleaned.replace(/^-   \[.*?\]\[\d+\][\.\s].*?Learn\s+more:.*$/gm, '');
+  // Variant: "-   [Name][N][.][M] description..." (broken link artifacts)
+  cleaned = cleaned.replace(/^-   \[.*?\]\[\d+\]\[\.\]\[\d+\].*$/gm, '');
 
   // Orphaned reference-style image links pointing to broken outlook.live.com UUIDs
   // These show up as [![][N]](outlook-url) before conversion — but after they become [![][N]][M]
@@ -827,7 +903,23 @@ function findContentElement(doc: Document): Element | null {
   // Fallback: look for the rps_ class container (Outlook renders email body here)
   const rps = doc.querySelector('[class^="rps_"]');
   if (rps) return rps;
-  return doc.body;
+  return null;
+}
+
+const GENERIC_SELECTORS = [
+  'article',
+  '[role="main"]',
+  'main',
+  '.node__content',
+  '.post-content',
+];
+
+function findGenericContentElement(doc: Document): Element | null {
+  for (const sel of GENERIC_SELECTORS) {
+    const el = doc.querySelector(sel);
+    if (el) return el;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1040,23 +1132,50 @@ function extractFromHtml(html: string, filename: string): string {
     return extractXTwitterMarkdown(doc);
   }
 
-  const pageTitle = extractPageTitle(doc);
   const pageUrl = extractCanonicalUrl(doc);
   const pageDate = extractPageDate(doc);
 
   const contentEl = findContentElement(doc);
-  if (!contentEl) {
-    return `<!-- No content element found in ${filename} -->`;
+  const genericEl = contentEl ? null : findGenericContentElement(doc);
+
+  let pageTitle: string;
+  let markdown: string;
+
+  if (contentEl) {
+    // Email-specific extraction path (Outlook/Gmail)
+    console.log(`  Content element: <${contentEl.tagName.toLowerCase()} class="${contentEl.className?.substring?.(0, 40) || ''}">`);
+    pageTitle = extractPageTitle(doc);
+
+    const clone = contentEl.cloneNode(true) as Element;
+    sanitizeEmailHtml(clone);
+
+    const td = createEmailTurndown();
+    markdown = td.turndown(clone.innerHTML);
+  } else if (genericEl) {
+    // Generic site with identifiable content element (article/main/etc.)
+    // Use the element's HTML directly — we already found the content.
+    console.log(`  Generic content element: <${genericEl.tagName.toLowerCase()} class="${genericEl.className?.substring?.(0, 40) || ''}">`);
+    pageTitle = extractPageTitle(doc);
+    const clone = genericEl.cloneNode(true) as Element;
+    const td = createEmailTurndown();
+    markdown = td.turndown(clone.innerHTML);
+  } else {
+    // No identifiable content element → use Readability on full page
+    console.log('  Generic page, using Readability on full document');
+    const reader = new Readability(doc, { charThreshold: 0 });
+    const readable = reader.parse();
+
+    if (readable) {
+      pageTitle = readable.title || extractPageTitle(doc);
+      const td = createEmailTurndown();
+      markdown = td.turndown(readable.content);
+    } else {
+      console.log('  Readability failed, falling back to full body');
+      pageTitle = extractPageTitle(doc);
+      const td = createEmailTurndown();
+      markdown = td.turndown(doc.body.innerHTML);
+    }
   }
-
-  console.log(`  Content element: <${contentEl.tagName.toLowerCase()} class="${contentEl.className?.substring?.(0, 40) || ''}">`);
-
-  const clone = contentEl.cloneNode(true) as Element;
-
-  sanitizeEmailHtml(clone);
-
-  const td = createEmailTurndown();
-  let markdown = td.turndown(clone.innerHTML);
 
   markdown = cleanMarkdownLinks(markdown);
   markdown = cleanMarkdownContent(markdown);

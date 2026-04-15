@@ -4,7 +4,7 @@ import type { ServiceWorkerMessage, BroadcastEvent } from '../shared/messages';
 import type { CapturedFile, ExtractionResult } from '../shared/types';
 import { createMergedFile } from '../shared/merge-files';
 
-console.log('[BrowserClaw:SW] Service worker loaded');
+console.log('[ContentExtractor:SW] Service worker loaded');
 
 function broadcast(event: BroadcastEvent): void {
   chrome.runtime.sendMessage(event).catch(() => {});
@@ -12,27 +12,27 @@ function broadcast(event: BroadcastEvent): void {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   const msg = message as ServiceWorkerMessage;
-  console.log('[BrowserClaw:SW] Received message:', msg.type);
+  console.log('[ContentExtractor:SW] Received message:', msg.type);
 
   (async () => {
     try {
       switch (msg.type) {
         case 'EXTRACT_CURRENT_TAB': {
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-          console.log('[BrowserClaw:SW] Active tab:', tab?.id, tab?.url);
+          console.log('[ContentExtractor:SW] Active tab:', tab?.id, tab?.url);
           if (!tab.id) {
             throw new Error('No active tab found');
           }
 
-          console.log('[BrowserClaw:SW] Injecting content script...');
+          console.log('[ContentExtractor:SW] Injecting content script...');
           await chrome.scripting.executeScript({
             target: { tabId: tab.id },
             files: ['content-script.js'],
           });
-          console.log('[BrowserClaw:SW] Content script injected, sending EXTRACT...');
+          console.log('[ContentExtractor:SW] Content script injected, sending EXTRACT...');
 
           const response = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT' });
-          console.log('[BrowserClaw:SW] Content script response:', response);
+          console.log('[ContentExtractor:SW] Content script response:', response);
 
           if (response.type === 'EXTRACTION_ERROR') {
             throw new Error(response.error);
@@ -57,20 +57,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
           await addFile(capturedFile);
           broadcast({ type: 'FILES_UPDATED' });
-          console.log('[BrowserClaw:SW] File saved:', capturedFile.title);
+          console.log('[ContentExtractor:SW] File saved:', capturedFile.title);
 
           const isEmail = capturedFile.siteType === 'outlook' || capturedFile.siteType === 'gmail';
           if (isEmail && capturedFile.links.length > 0) {
             const crawlableUrls = filterCrawlableLinks(capturedFile.links);
             if (crawlableUrls.length > 0) {
               const config = await getConfig();
-              console.log(`[BrowserClaw:SW] Auto-crawling ${crawlableUrls.length} Caixin links`);
+              console.log(`[ContentExtractor:SW] Auto-crawling ${crawlableUrls.length} Caixin links`);
               crawlLinksForFile(
                 capturedFile.id,
                 crawlableUrls,
                 config.maxConcurrentTabs,
                 broadcast,
-              ).catch(err => console.error('[BrowserClaw:SW] Auto-crawl error:', err));
+              ).catch(err => console.error('[ContentExtractor:SW] Auto-crawl error:', err));
             }
           }
 
@@ -127,24 +127,24 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
         case 'CRAWL_LINKS': {
           const config = await getConfig();
-          console.log(`[BrowserClaw:SW] Manual crawl: ${msg.urls.length} links for file ${msg.fileId}`);
+          console.log(`[ContentExtractor:SW] Manual crawl: ${msg.urls.length} links for file ${msg.fileId}`);
           crawlLinksForFile(
             msg.fileId,
             msg.urls,
             config.maxConcurrentTabs,
             broadcast,
-          ).catch(err => console.error('[BrowserClaw:SW] Crawl error:', err));
+          ).catch(err => console.error('[ContentExtractor:SW] Crawl error:', err));
           sendResponse({ success: true });
           break;
         }
 
         default: {
-          console.warn('[BrowserClaw:SW] Unknown message type:', (message as Record<string, unknown>).type);
+          console.warn('[ContentExtractor:SW] Unknown message type:', (message as Record<string, unknown>).type);
           break;
         }
       }
     } catch (error) {
-      console.error('[BrowserClaw:SW] Error handling', msg.type, ':', error);
+      console.error('[ContentExtractor:SW] Error handling', msg.type, ':', error);
       sendResponse({
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',

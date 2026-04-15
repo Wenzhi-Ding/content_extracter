@@ -56,12 +56,12 @@ export const App = () => {
   }, []);
 
   const handleExtract = () => {
-    console.log('[BrowserClaw:SidePanel] Extract button clicked');
+    console.log('[ContentExtractor:SidePanel] Extract button clicked');
     setExtracting(true);
     chrome.runtime.sendMessage({ type: 'EXTRACT_CURRENT_TAB' }, (response) => {
-      console.log('[BrowserClaw:SidePanel] Extract response:', response);
+      console.log('[ContentExtractor:SidePanel] Extract response:', response);
       if (chrome.runtime.lastError) {
-        console.error('[BrowserClaw:SidePanel] Extract error:', chrome.runtime.lastError.message);
+        console.error('[ContentExtractor:SidePanel] Extract error:', chrome.runtime.lastError.message);
       }
       setExtracting(false);
     });
@@ -84,7 +84,7 @@ export const App = () => {
   const handleMergeAll = () => {
     chrome.runtime.sendMessage({ type: 'MERGE_ALL_FILES' }, (response) => {
       if (chrome.runtime.lastError) {
-        console.error('[BrowserClaw:Popup] Merge error:', chrome.runtime.lastError.message);
+        console.error('[ContentExtractor:Popup] Merge error:', chrome.runtime.lastError.message);
         return;
       }
 
