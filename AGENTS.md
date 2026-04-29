@@ -23,6 +23,7 @@ src/
 ├── shared/            # Shared types — types.ts, constants.ts, messages.ts, merge-files.ts
 ├── lib/               # Third-party wrappers — readability.ts, turndown.ts
 └── types/             # Type declarations — turndown-plugin-gfm.d.ts
+doc/                   # 网站适配经验教训（按网站分类）
 ```
 
 ---
@@ -174,9 +175,23 @@ Select-String -Path "dist/content-script.js" -Pattern "rps_" -SimpleMatch
 
 Content scripts injected via `chrome.scripting.executeScript` are **not** subject to page CSP. CSP warnings in Outlook console are unrelated to this extension.
 
+### Website Adaptation Lessons
+
+Every time a new site is adapted (or an existing site's extraction logic changes significantly), create or update the corresponding file in `doc/`:
+
+- File naming: `doc/<site-name>.md` (e.g., `doc/kimi.md`, `doc/outlook.md`)
+- Content should include: page characteristics, selector strategy, cleanup points, gotchas, and the adaptation process
+- These docs are for future maintainers and for reviewing extraction quality across sites
+
 ---
 
-## 7. Security Principles
+## 7. Version Bumping
+
+After completing a feature or bugfix that changes extraction behavior, remind the user to bump the version in `package.json` and update `CHANGELOG.md` (if one exists).
+
+---
+
+## 8. Security Principles
 
 - All operations require explicit user click — no automatic extraction
 - API requests sent only from Service Worker

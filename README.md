@@ -1,8 +1,8 @@
 # Content Extractor
 
-**Chrome 扩展** — 从任意网页（包括需要登录的邮箱页面）提取干净内容，转换为 Markdown，支持拖拽导出和多文件合并。
+**Chrome 扩展** — 从任意网页（包括邮箱页面）提取干净内容，转换为 Markdown，支持拖拽导出和多文件合并。
 
-**Chrome Extension** — Extract clean content from any web page (including authenticated email clients) as Markdown, with drag-export and multi-file merge support.
+**Chrome Extension** — Extract clean content from any web page (including email inbox) as Markdown, with drag-export and multi-file merge support.
 
 ---
 

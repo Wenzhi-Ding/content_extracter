@@ -409,6 +409,8 @@ function buildTitle(siteType: SiteType, fallbackTitle: string): TitleResult {
     meta = extractGmailMeta();
   } else if (siteType === 'caixin') {
     return buildCaixinTitle(fallbackTitle);
+  } else if (siteType === 'kimi') {
+    return buildKimiTitle(fallbackTitle);
   }
 
   if (siteType === 'generic') {
@@ -450,6 +452,15 @@ function buildCaixinTitle(fallbackTitle: string): TitleResult {
   }
 
   return { title, sender, emailDate: date };
+}
+
+function buildKimiTitle(fallbackTitle: string): TitleResult {
+  const chatNameEl = document.querySelector('.chat-name');
+  const chatName = chatNameEl?.textContent?.trim() || fallbackTitle;
+
+  const date = extractArticleDate() ?? undefined;
+
+  return { title: chatName, emailDate: date };
 }
 
 function cleanMarkdownLinks(markdown: string): string {
@@ -768,6 +779,61 @@ function sanitizeCaixinHtml(container: Element): void {
   }
 }
 
+function sanitizeKimiHtml(container: Element): string[] {
+  const removeSelectors = [
+    '.segment-assistant-actions',
+    '.segment-assistant-actions-content',
+    '.segment-user-actions',
+    '.simple-button',
+    '.toolcall-title-container',
+    '.toolcall-title-name',
+    '.table-actions',
+    '.table-actions-content',
+    '.chat-action',
+    'script',
+    'style',
+  ];
+
+  for (const sel of removeSelectors) {
+    container.querySelectorAll(sel).forEach(el => el.remove());
+  }
+
+  // Convert rag-tag citation markers to reference-style text
+  // Kimi uses <a class="rag-tag" href="..."> or <div class="rag-tag" data-site-name="...">
+  const ragTags = container.querySelectorAll('.rag-tag');
+  const sources: string[] = [];
+  for (const el of ragTags) {
+    const siteName = el.getAttribute('data-site-name') || '';
+    const href = el.getAttribute('href') || '';
+    if (siteName && !sources.includes(siteName)) {
+      sources.push(siteName);
+    }
+    if (href && href.startsWith('http')) {
+      // <a class="rag-tag" href="..."> → keep as a real link
+      const a = document.createElement('a');
+      a.setAttribute('href', href);
+      a.textContent = `[${siteName}]`;
+      el.replaceWith(a);
+    } else {
+      // <div class="rag-tag"> → plain text marker
+      const textNode = document.createTextNode(` [ref: ${siteName}]`);
+      el.replaceWith(textNode);
+    }
+  }
+
+  // Remove empty elements that might be left after removal
+  const allElements = container.querySelectorAll('div, span');
+  for (const el of allElements) {
+    if (!el.parentElement) continue;
+    const text = (el.textContent || '').trim();
+    if (text === '' && el.children.length === 0) {
+      el.remove();
+    }
+  }
+
+  return sources;
+}
+
 function extractArticleDate(): string | null {
   const metaSelectors = [
     'meta[property="article:published_time"]',
@@ -848,6 +914,13 @@ async function extractPageContent(): Promise<ExtractionResult> {
       rawTitle = document.title;
       content = clonedTarget.innerHTML;
       contentElement = targetElement;
+    } else if (siteType === 'kimi') {
+      const sources = sanitizeKimiHtml(clonedTarget);
+      rawTitle = document.title;
+      content = clonedTarget.innerHTML;
+      contentElement = targetElement;
+      // Store sources for later appending
+      (contentElement as any).__kimiSources = sources;
     } else {
       // Generic site with identifiable content element (article/main/etc.)
       // Use the element's HTML directly — Readability already found the content for us.
@@ -878,6 +951,15 @@ async function extractPageContent(): Promise<ExtractionResult> {
   markdown = cleanAfterReferenceConversion(markdown);
   markdown = removeUnusedReferences(markdown);
   markdown = renumberReferences(markdown);
+
+  // Append Kimi citation sources if available
+  const kimiSources = (contentElement as any).__kimiSources as string[] | undefined;
+  if (kimiSources && kimiSources.length > 0) {
+    markdown += '\n\n---\n\n**引用来源：**\n\n';
+    for (const source of kimiSources) {
+      markdown += `- ${source}\n`;
+    }
+  }
 
   const links = extractLinks(contentElement);
   const titleResult = buildTitle(siteType, rawTitle);

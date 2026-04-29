@@ -490,6 +490,61 @@ function sanitizeEmailHtml(container: Element): void {
   }
 }
 
+function sanitizeKimiHtml(container: Element): string[] {
+  const removeSelectors = [
+    '.segment-assistant-actions',
+    '.segment-assistant-actions-content',
+    '.segment-user-actions',
+    '.simple-button',
+    '.toolcall-title-container',
+    '.toolcall-title-name',
+    '.table-actions',
+    '.table-actions-content',
+    '.chat-action',
+    'script',
+    'style',
+  ];
+
+  for (const sel of removeSelectors) {
+    container.querySelectorAll(sel).forEach(el => el.remove());
+  }
+
+  // Convert rag-tag citation markers to reference-style text
+  // Kimi uses <a class="rag-tag" href="..."> or <div class="rag-tag" data-site-name="...">
+  const ragTags = container.querySelectorAll('.rag-tag');
+  const sources: string[] = [];
+  for (const el of ragTags) {
+    const siteName = el.getAttribute('data-site-name') || '';
+    const href = el.getAttribute('href') || '';
+    if (siteName && !sources.includes(siteName)) {
+      sources.push(siteName);
+    }
+    if (href && href.startsWith('http')) {
+      // <a class="rag-tag" href="..."> → keep as a real link
+      const a = container.ownerDocument.createElement('a');
+      a.setAttribute('href', href);
+      a.textContent = `[${siteName}]`;
+      el.replaceWith(a);
+    } else {
+      // <div class="rag-tag"> → plain text marker
+      const textNode = container.ownerDocument.createTextNode(` [ref: ${siteName}]`);
+      el.replaceWith(textNode);
+    }
+  }
+
+  // Remove empty elements that might be left after removal
+  const allElements = container.querySelectorAll('div, span');
+  for (const el of allElements) {
+    if (!el.parentElement) continue;
+    const text = (el.textContent || '').trim();
+    if (text === '' && el.children.length === 0) {
+      el.remove();
+    }
+  }
+
+  return sources;
+}
+
 // ---------------------------------------------------------------------------
 // 5. Turndown setup  (mirrors src/lib/turndown.ts — single instance for email)
 // ---------------------------------------------------------------------------
@@ -912,6 +967,9 @@ const GENERIC_SELECTORS = [
   'main',
   '.node__content',
   '.post-content',
+  '.chat-content-list',
+  '.chat-detail-content',
+  '.markdown-container',
 ];
 
 function findGenericContentElement(doc: Document): Element | null {
@@ -1140,6 +1198,7 @@ function extractFromHtml(html: string, filename: string): string {
 
   let pageTitle: string;
   let markdown: string;
+  let kimiSources: string[] = [];
 
   if (contentEl) {
     // Email-specific extraction path (Outlook/Gmail)
@@ -1157,6 +1216,9 @@ function extractFromHtml(html: string, filename: string): string {
     console.log(`  Generic content element: <${genericEl.tagName.toLowerCase()} class="${genericEl.className?.substring?.(0, 40) || ''}">`);
     pageTitle = extractPageTitle(doc);
     const clone = genericEl.cloneNode(true) as Element;
+    if (genericEl.className?.includes('chat-content-list')) {
+      kimiSources = sanitizeKimiHtml(clone);
+    }
     const td = createEmailTurndown();
     markdown = td.turndown(clone.innerHTML);
   } else {
@@ -1183,6 +1245,14 @@ function extractFromHtml(html: string, filename: string): string {
   markdown = cleanAfterReferenceConversion(markdown);
   markdown = removeUnusedReferences(markdown);
   markdown = renumberReferences(markdown);
+
+  // Append Kimi citation sources if available
+  if (kimiSources.length > 0) {
+    markdown += '\n\n---\n\n**引用来源：**\n\n';
+    for (const source of kimiSources) {
+      markdown += `- ${source}\n`;
+    }
+  }
 
   const header = `# ${pageTitle}\n${pageUrl}\n${pageDate}\n\n`;
   return header + markdown;

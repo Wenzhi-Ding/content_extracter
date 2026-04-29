@@ -1,6 +1,6 @@
 export type FileId = string;
 
-export type SiteType = 'outlook' | 'gmail' | 'caixin' | 'generic';
+export type SiteType = 'outlook' | 'gmail' | 'caixin' | 'kimi' | 'generic';
 
 export interface ExtractedLink {
   url: string;

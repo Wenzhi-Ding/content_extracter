@@ -23,6 +23,13 @@ const CAIXIN_STRATEGIES: SelectorStrategy[] = [
   { selector: '.text.have_anchor_share', description: 'Caixin article text container' },
 ];
 
+const KIMI_STRATEGIES: SelectorStrategy[] = [
+  { selector: '.chat-content-list', description: 'Kimi chat message list' },
+  { selector: '.chat-detail-content', description: 'Kimi chat detail content' },
+  { selector: '.chat-detail-main', description: 'Kimi chat detail main' },
+  { selector: '.markdown-container', description: 'Kimi markdown content container' },
+];
+
 const DEFAULT_STRATEGIES: SelectorStrategy[] = [
   { selector: 'article', description: 'HTML5 article element' },
   { selector: '[role="main"]', description: 'Main landmark role' },
@@ -43,6 +50,14 @@ function isCaixinHost(hostname: string): boolean {
   return hostname.endsWith('.caixin.com') || hostname === 'caixin.com';
 }
 
+function isKimiHost(hostname: string): boolean {
+  return hostname === 'kimi.ai' ||
+    hostname.endsWith('.kimi.ai') ||
+    hostname === 'kimi.com' ||
+    hostname.endsWith('.kimi.com') ||
+    hostname.includes('kimi.moonshot.cn');
+}
+
 function getStrategies(hostname: string): SelectorStrategy[] {
   if (isOutlookHost(hostname)) {
     return OUTLOOK_STRATEGIES;
@@ -52,6 +67,9 @@ function getStrategies(hostname: string): SelectorStrategy[] {
   }
   if (isCaixinHost(hostname)) {
     return CAIXIN_STRATEGIES;
+  }
+  if (isKimiHost(hostname)) {
+    return KIMI_STRATEGIES;
   }
   return DEFAULT_STRATEGIES;
 }
@@ -84,6 +102,10 @@ export function detectSiteType(hostname: string): SiteType {
 
   if (isCaixinHost(hostname)) {
     return 'caixin';
+  }
+
+  if (isKimiHost(hostname)) {
+    return 'kimi';
   }
   
   return 'generic';
