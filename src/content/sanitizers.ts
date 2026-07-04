@@ -76,19 +76,25 @@ function isDecorationTable(table: Element): boolean {
 // --- Public sanitizers ---
 
 export function sanitizeEmailHtml(container: Element): void {
-  // Remove preheader / hidden preview text
+  // Remove hidden preview text, scripts, and style blocks entirely.
   const hiddenEls = container.querySelectorAll(
     '[style*="display:none"], [style*="display: none"], ' +
     '.sailthru-emco-preheader, .x_sailthru-emco-preheader, ' +
-    '[class*="preheader"], [class*="preview-text"]'
+    '[class*="preheader"], [class*="preview-text"], ' +
+    'script, style'
   );
   for (const el of hiddenEls) {
     const style = el.getAttribute('style') || '';
-    if (style.includes('display:none') || style.includes('display: none') ||
-        el.classList.contains('sailthru-emco-preheader') ||
-        el.classList.contains('x_sailthru-emco-preheader') ||
-        el.className?.includes?.('preheader') ||
-        el.className?.includes?.('preview-text')) {
+    const tagName = el.tagName.toLowerCase();
+    if (
+      style.includes('display:none') || style.includes('display: none') ||
+      el.classList.contains('sailthru-emco-preheader') ||
+      el.classList.contains('x_sailthru-emco-preheader') ||
+      el.className?.includes?.('preheader') ||
+      el.className?.includes?.('preview-text') ||
+      tagName === 'script' ||
+      tagName === 'style'
+    ) {
       el.remove();
     }
   }

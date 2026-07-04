@@ -9,14 +9,19 @@ export default defineConfig({
     preact(),
     crx({ manifest }),
     {
-      name: 'wrap-content-script-iife',
+      name: 'wrap-standalone-iife',
       enforce: 'post',
       generateBundle(_options, bundle) {
-        const chunk = bundle['content-script.js'];
-        if (chunk && chunk.type === 'chunk') {
+        const contentChunk = bundle['content-script.js'];
+        if (contentChunk && contentChunk.type === 'chunk') {
           // Wrap content-script in IIFE so `const` declarations are scoped
           // to a function and don't throw on re-injection.
-          chunk.code = `(function(){\n${chunk.code}\n})();`;
+          contentChunk.code = `(function(){\n${contentChunk.code}\n})();`;
+        }
+        const apiChunk = bundle['content-extractor-api.js'];
+        if (apiChunk && apiChunk.type === 'chunk') {
+          // The standalone API must install itself on window immediately.
+          apiChunk.code = `(function(){\n${apiChunk.code}\n})();`;
         }
       },
     },
@@ -27,11 +32,15 @@ export default defineConfig({
     rollupOptions: {
       input: {
         'content-script': resolve(__dirname, 'src/content/index.ts'),
+        'content-extractor-api': resolve(__dirname, 'src/api/index.ts'),
       },
       output: {
         entryFileNames: (chunkInfo) => {
           if (chunkInfo.name === 'content-script') {
             return 'content-script.js';
+          }
+          if (chunkInfo.name === 'content-extractor-api') {
+            return 'content-extractor-api.js';
           }
           return 'assets/[name]-[hash].js';
         },

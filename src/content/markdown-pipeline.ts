@@ -111,6 +111,11 @@ export function cleanMarkdownContent(markdown: string): string {
 
   cleaned = cleaned.replace(/^\|?\s*\|?\s*$/gm, '');
 
+  // Remove isolated CSS class lines that occasionally leak through from email HTML.
+  // Outlook email bodies are now extracted via innerText, so this is a defensive fallback.
+  cleaned = cleaned.replace(/^\s*\.(rps_|x_)[^\n]*$/gm, '');
+  cleaned = cleaned.replace(/^\s*@media[^\n]*$/gm, '');
+
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
 
   cleaned = cleaned.trim();
