@@ -52,7 +52,13 @@ def evaluate_js(code: str, session: str = DEFAULT_SESSION) -> object:
 
 
 def load_all_emails(max_iterations: int = 50, stable_threshold: int = 3) -> List[dict]:
-    """Scroll the Outlook message list until no new items appear."""
+    """Scroll the Outlook message list until no new items appear.
+
+    IMPORTANT: Outlook on the web (outlook.live.com) appears to render only a
+    limited number of recent emails per folder in the web UI (commonly 8-10).
+    This function collects every row that the UI actually loads; it cannot
+    retrieve emails that Outlook chooses not to render in the current web view.
+    """
     all_convids: dict[str, str] = {}
     stable_count = 0
 
@@ -182,7 +188,9 @@ def main():
 
     print('Loading all emails by scrolling the message list...')
     emails = load_all_emails()
-    print(f'\nTotal emails to extract: {len(emails)}')
+    print(f'\nTotal emails loaded by Outlook web UI: {len(emails)}')
+    if len(emails) < 15:
+        print('  Note: Outlook on the web may only render a subset of the folder.')
 
     print('Injecting content extractor API...')
     evaluate_js(f'''
